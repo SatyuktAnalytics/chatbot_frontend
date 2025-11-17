@@ -7,14 +7,11 @@ import {
   Globe,
 } from "lucide-react";
 
-//development server
-// const API_BASE_URL = "http://127.0.0.1:8000";
-
-//json based rag
-// const API_BASE_URL = "https://satyuktanalytics-json-based-backend.hf.space";
-
-//document based rag with generator model
-const API_BASE_URL = "https://satyuktanalytics-generator-based-backend.hf.space";
+// ---- MODIFIED: Define both API base URLs ----
+// API for FAQ clicks and related functions (initial load, translate, etc.)
+const API_BASE_URL1 = "https://saran08-chatbot-backend.hf.space";
+// API for user-typed questions
+const API_BASE_URL2 = "https://saran08-rag-llm-chatbot-backend.hf.space";
 
 const ChatBot = () => {
   const [messages, setMessages] = useState([]);
@@ -47,7 +44,8 @@ const ChatBot = () => {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        const langResponse = await fetch(`${API_BASE_URL}/languages`);
+        // ---- MODIFIED: Using API_BASE_URL1 for recommendation system functions ----
+        const langResponse = await fetch(`${API_BASE_URL1}/languages`);
         if (langResponse.ok) {
           const langData = await langResponse.json();
           if (
@@ -59,7 +57,7 @@ const ChatBot = () => {
         }
 
         const recResponse = await fetch(
-          `${API_BASE_URL}/recommendations/initial`
+          `${API_BASE_URL1}/recommendations/initial`
         );
         if (recResponse.ok) {
           const recData = await recResponse.json();
@@ -102,7 +100,8 @@ const ChatBot = () => {
 
         let translated = rec;
         try {
-          const response = await fetch(`${API_BASE_URL}/translate`, {
+          // ---- MODIFIED: Using API_BASE_URL1 for translation ----
+          const response = await fetch(`${API_BASE_URL1}/translate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -120,15 +119,14 @@ const ChatBot = () => {
           console.error("Translation error:", err);
         }
 
-        // replace the placeholder with actual translation
         setTranslatedRecommendations((prev) => {
           const copy = [...prev];
           copy[i] = translated;
           return copy;
         });
 
-        setTranslatingIndex(null); // done translating this one
-        await new Promise((resolve) => setTimeout(resolve, 50)); // allow render
+        setTranslatingIndex(null);
+        await new Promise((resolve) => setTimeout(resolve, 50));
       }
 
       setIsTranslating(false);
@@ -149,6 +147,7 @@ const ChatBot = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // ---- MODIFIED: This function now sends to API_BASE_URL2 for typed questions ----
   const sendMessage = async (messageText = null) => {
     const textToSend = messageText || inputValue.trim();
     if (!textToSend) return;
@@ -159,7 +158,8 @@ const ChatBot = () => {
     if (!messageText) setInputValue("");
 
     try {
-      const response = await fetch(`${API_BASE_URL}/chat`, {
+      // ---- CHANGE: Using API_BASE_URL2 ----
+      const response = await fetch(`${API_BASE_URL2}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -173,7 +173,9 @@ const ChatBot = () => {
         const botMessage = { role: "assistant", content: data.answer };
         setMessages((prev) => [...prev, botMessage]);
         setRecommendations(data.recommendations || []);
-        setHasRecommenderHistory(true);
+        if (data.recommendations && data.recommendations.length > 0) {
+          setHasRecommenderHistory(true);
+        }
       } else {
         throw new Error(data.detail || "Failed to get response");
       }
@@ -192,20 +194,25 @@ const ChatBot = () => {
     }
   };
 
+  // ---- MODIFIED: This function now sends to API_BASE_URL1 for FAQ clicks ----
   const handleRecommendationClick = async (
     displayText,
     originalEnglishText
   ) => {
     if (displayText === "go_back") {
       try {
-        const response = await fetch(`${API_BASE_URL}/recommendations/action`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "go_back",
-            user_language: selectedLanguage,
-          }),
-        });
+        // ---- MODIFIED: Using API_BASE_URL1 for recommendation system actions ----
+        const response = await fetch(
+          `${API_BASE_URL1}/recommendations/action`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "go_back",
+              user_language: selectedLanguage,
+            }),
+          }
+        );
         const data = await response.json();
         if (response.ok) {
           setRecommendations(data.recommendations || []);
@@ -221,7 +228,8 @@ const ChatBot = () => {
     setIsLoading(true);
     setMessages((prev) => [...prev, { role: "user", content: displayText }]);
     try {
-      const response = await fetch(`${API_BASE_URL}/chat`, {
+      // ---- CHANGE: Using API_BASE_URL1 ----
+      const response = await fetch(`${API_BASE_URL1}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -256,11 +264,11 @@ const ChatBot = () => {
     }
   };
 
-  // ---- NEW FUNCTION FOR "MORE QUESTIONS" ----
   const handleMoreQuestionsClick = async () => {
-    setIsLoading(true); // Use the main loading state to prevent other actions
+    setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/recommendations/action`, {
+      // ---- MODIFIED: Using API_BASE_URL1 for recommendation system actions ----
+      const response = await fetch(`${API_BASE_URL1}/recommendations/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -270,7 +278,6 @@ const ChatBot = () => {
       });
       const data = await response.json();
       if (response.ok && data.recommendations) {
-        // Append the new questions to the existing list
         setRecommendations((prev) => [...prev, ...data.recommendations]);
       } else {
         throw new Error(data.detail || "Failed to get more questions");
@@ -296,7 +303,7 @@ const ChatBot = () => {
 
   return (
     <div className="min-h-screen bg-slate-800 text-white flex">
-      {/* Slide-in Sidebar */}
+      {/* Sidebar */}
       <div
         className={`fixed top-0 left-0 h-full bg-slate-700 border-r border-slate-600 flex flex-col transition-all duration-300 z-40 ${
           isSidebarOpen ? "w-80" : "w-0 overflow-hidden"
@@ -363,7 +370,7 @@ const ChatBot = () => {
           </p>
         </div>
 
-        {/* Scrolling Wrapper for Messages and Recommendations */}
+        {/* Scrolling Wrapper */}
         <div className="flex-1 overflow-y-auto">
           {/* Chat Messages */}
           <div className="p-6">
@@ -471,7 +478,6 @@ const ChatBot = () => {
                     </button>
                   ))}
 
-                  {/* ---- NEW "MORE QUESTIONS" BUTTON ---- */}
                   {recommendations.length > 0 && (
                     <button
                       onClick={handleMoreQuestionsClick}
