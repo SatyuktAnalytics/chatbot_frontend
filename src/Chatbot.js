@@ -9,9 +9,9 @@ import {
 
 // ---- MODIFIED: Define both API base URLs ----
 // API for FAQ clicks and related functions (initial load, translate, etc.)
-const API_BASE_URL1 = "https://saran08-chatbot-backend.hf.space";
+const API_BASE_URL1 = "https://satyuktanalytics-json-based-backend.hf.space";
 // API for user-typed questions
-const API_BASE_URL2 = "https://saran08-rag-llm-chatbot-backend.hf.space";
+const API_BASE_URL2 = "https://satyuktanalytics-generator-based-backend.hf.space";
 
 const ChatBot = () => {
   const [messages, setMessages] = useState([]);
