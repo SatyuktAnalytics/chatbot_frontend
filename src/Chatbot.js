@@ -1,17 +1,17 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Send,
   MessageCircle,
   ArrowLeft,
   ArrowRight,
   Globe,
+  Search, // CHANGED: Added Search icon for clarity
 } from "lucide-react";
+import { debounce } from "lodash"; // CHANGED: Added lodash for easy debouncing
 
-// ---- MODIFIED: Define both API base URLs ----
-// API for FAQ clicks and related functions (initial load, translate, etc.)
-const API_BASE_URL1 = "https://satyuktanalytics-json-based-backend.hf.space";
-// API for user-typed questions
-const API_BASE_URL2 = "https://satyuktanalytics-generator-based-backend.hf.space";
+// CHANGED: Removed API_BASE_URL2, as the RAG backend is no longer used.
+// All requests now go to the recommender/FAQ backend.
+const API_BASE_URL1 = "https://saran08-chatbot-backend.hf.space";
 
 const ChatBot = () => {
   const [messages, setMessages] = useState([]);
@@ -20,12 +20,16 @@ const ChatBot = () => {
   const [translatedRecommendations, setTranslatedRecommendations] = useState(
     []
   );
+  // CHANGED: New state for suggestions that appear while typing
+  const [typingSuggestions, setTypingSuggestions] = useState([]);
+
   const [languages, setLanguages] = useState({ English: "en" });
   const [selectedLanguage, setSelectedLanguage] = useState("en");
   const [selectedLanguageName, setSelectedLanguageName] = useState("English");
   const [isInitialized, setIsInitialized] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
+  const [isSuggesting, setIsSuggesting] = useState(false); // CHANGED: State for suggestion loading
   const [hasRecommenderHistory, setHasRecommenderHistory] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [translatingIndex, setTranslatingIndex] = useState(null);
@@ -33,18 +37,15 @@ const ChatBot = () => {
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages]);
 
-  // Initialize languages and recommendations
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // ---- MODIFIED: Using API_BASE_URL1 for recommendation system functions ----
         const langResponse = await fetch(`${API_BASE_URL1}/languages`);
         if (langResponse.ok) {
           const langData = await langResponse.json();
@@ -77,7 +78,6 @@ const ChatBot = () => {
     initializeApp();
   }, []);
 
-  // Translate recommendations sequentially (one by one)
   useEffect(() => {
     const translateSequentially = async () => {
       if (!recommendations.length) {
@@ -100,7 +100,6 @@ const ChatBot = () => {
 
         let translated = rec;
         try {
-          // ---- MODIFIED: Using API_BASE_URL1 for translation ----
           const response = await fetch(`${API_BASE_URL1}/translate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -135,7 +134,6 @@ const ChatBot = () => {
     translateSequentially();
   }, [recommendations, selectedLanguage]);
 
-  // Keyboard shortcut to open sidebar
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.ctrlKey && e.key === "l") {
@@ -147,61 +145,54 @@ const ChatBot = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // ---- MODIFIED: This function now sends to API_BASE_URL2 for typed questions ----
-  const sendMessage = async (messageText = null) => {
-    const textToSend = messageText || inputValue.trim();
-    if (!textToSend) return;
-
-    setIsLoading(true);
-    const userMessage = { role: "user", content: textToSend };
-    setMessages((prev) => [...prev, userMessage]);
-    if (!messageText) setInputValue("");
-
-    try {
-      // ---- CHANGE: Using API_BASE_URL2 ----
-      const response = await fetch(`${API_BASE_URL2}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: textToSend,
-          user_language: selectedLanguage,
-          chat_history: messages,
-        }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        const botMessage = { role: "assistant", content: data.answer };
-        setMessages((prev) => [...prev, botMessage]);
-        setRecommendations(data.recommendations || []);
-        if (data.recommendations && data.recommendations.length > 0) {
-          setHasRecommenderHistory(true);
-        }
-      } else {
-        throw new Error(data.detail || "Failed to get response");
+  // CHANGED: Debounced function to fetch suggestions from the new `/suggest` endpoint
+  const fetchSuggestions = useCallback(
+    debounce(async (query) => {
+      if (query.length < 3) {
+        setTypingSuggestions([]);
+        return;
       }
-    } catch (error) {
-      console.error("Error sending message:", error);
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: "Sorry, I encountered an error. Please try again.",
-        },
-      ]);
-    } finally {
-      setIsLoading(false);
-      inputRef.current?.focus();
-    }
-  };
+      setIsSuggesting(true);
+      try {
+        const response = await fetch(`${API_BASE_URL1}/suggest`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            query: query,
+            user_language: selectedLanguage,
+          }),
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setTypingSuggestions(data.suggestions || []);
+        }
+      } catch (error) {
+        console.error("Error fetching suggestions:", error);
+      } finally {
+        setIsSuggesting(false);
+      }
+    }, 300), // 300ms debounce delay
+    [selectedLanguage]
+  );
 
-  // ---- MODIFIED: This function now sends to API_BASE_URL1 for FAQ clicks ----
+  // CHANGED: This useEffect now triggers the debounced search
+  useEffect(() => {
+    fetchSuggestions(inputValue);
+  }, [inputValue, fetchSuggestions]);
+
+  // CHANGED: The sendMessage function is now REMOVED as users can no longer send free-form text.
+  // All interactions are handled by handleRecommendationClick.
+
   const handleRecommendationClick = async (
     displayText,
     originalEnglishText
   ) => {
+    // Clear input and suggestions when a choice is made
+    setInputValue("");
+    setTypingSuggestions([]);
+
     if (displayText === "go_back") {
       try {
-        // ---- MODIFIED: Using API_BASE_URL1 for recommendation system actions ----
         const response = await fetch(
           `${API_BASE_URL1}/recommendations/action`,
           {
@@ -228,7 +219,6 @@ const ChatBot = () => {
     setIsLoading(true);
     setMessages((prev) => [...prev, { role: "user", content: displayText }]);
     try {
-      // ---- CHANGE: Using API_BASE_URL1 ----
       const response = await fetch(`${API_BASE_URL1}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -267,7 +257,6 @@ const ChatBot = () => {
   const handleMoreQuestionsClick = async () => {
     setIsLoading(true);
     try {
-      // ---- MODIFIED: Using API_BASE_URL1 for recommendation system actions ----
       const response = await fetch(`${API_BASE_URL1}/recommendations/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -294,12 +283,7 @@ const ChatBot = () => {
     setSelectedLanguageName(langName);
   };
 
-  const handleKeyPress = (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
-  };
+  // CHANGED: handleKeyPress is removed as it's no longer needed.
 
   return (
     <div className="min-h-screen bg-slate-800 text-white flex">
@@ -365,8 +349,9 @@ const ChatBot = () => {
             🌾 Sat2Farm AI Assistant
           </h1>
           <p className="text-slate-300">
-            Ask me anything about Sat2Farm, or select a recommended question
-            below.
+            {/* CHANGED: Updated instructions */}
+            Start typing to find a question, or select one from the
+            recommendations below.
           </p>
         </div>
 
@@ -385,8 +370,8 @@ const ChatBot = () => {
                     Welcome to Sat2Farm AI!
                   </h2>
                   <p className="text-lg">
-                    Ask me a question or select one from the frequently asked
-                    questions below.
+                    {/* CHANGED: Updated instructions */}
+                    Find answers by searching for a question in the box below.
                   </p>
                 </div>
               </div>
@@ -493,26 +478,50 @@ const ChatBot = () => {
           </div>
         </div>
 
-        {/* Chat Input */}
-        <div className="p-6 border-t border-slate-600 flex-shrink-0">
-          <div className="max-w-4xl mx-auto flex gap-4">
-            <input
-              ref={inputRef}
-              type="text"
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="Type your question here..."
-              className="flex-1 p-4 bg-slate-700 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              disabled={isLoading}
-            />
-            <button
-              onClick={() => sendMessage()}
-              disabled={isLoading || !inputValue.trim()}
-              className="px-6 py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-600 disabled:cursor-not-allowed text-white rounded-xl transition-colors duration-200 flex items-center gap-2"
-            >
-              <Send size={20} />
-            </button>
+        {/* Chat Input Area */}
+        {/* CHANGED: This whole section is updated to show suggestions */}
+        <div className="p-6 border-t border-slate-600 flex-shrink-0 relative">
+          {/* Suggestions Box */}
+          {typingSuggestions.length > 0 && (
+            <div className="absolute bottom-full left-6 right-6 mb-2 max-w-4xl mx-auto bg-slate-900 border border-slate-600 rounded-xl shadow-lg p-2 z-10 max-h-60 overflow-y-auto">
+              {typingSuggestions.map((suggestion, index) => (
+                <button
+                  key={index}
+                  onClick={() =>
+                    handleRecommendationClick(
+                      suggestion.translated,
+                      suggestion.original
+                    )
+                  }
+                  className="w-full text-left p-3 hover:bg-slate-700 rounded-lg text-slate-200 transition-colors"
+                >
+                  {suggestion.translated}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Input Box */}
+          <div className="max-w-4xl mx-auto flex gap-4 items-center">
+            <div className="relative flex-1">
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                {isSuggesting ? (
+                  <div className="w-5 h-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <Search size={20} />
+                )}
+              </span>
+              <input
+                ref={inputRef}
+                type="text"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                placeholder="Start typing to find a question..."
+                className="w-full p-4 pl-12 bg-slate-700 border border-slate-600 rounded-xl text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                disabled={isLoading}
+              />
+            </div>
+            {/* The Send button is now removed */}
           </div>
         </div>
       </div>
