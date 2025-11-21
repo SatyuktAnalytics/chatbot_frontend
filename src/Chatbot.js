@@ -11,7 +11,7 @@ import { debounce } from "lodash"; // CHANGED: Added lodash for easy debouncing
 
 // CHANGED: Removed API_BASE_URL2, as the RAG backend is no longer used.
 // All requests now go to the recommender/FAQ backend.
-const API_BASE_URL1 = "https://saran08-chatbot-backend.hf.space";
+const API_BASE_URL1 = "https://satyuktanalytics-json-based-backend.hf.space";
 
 const ChatBot = () => {
   const [messages, setMessages] = useState([]);
